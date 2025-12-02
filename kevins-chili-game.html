@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Kevin's Famous Chili</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #f5f5f5;
+            font-family: Arial, sans-serif;
+            touch-action: none;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        
+        canvas {
+            display: block;
+            touch-action: none;
+        }
+    </style>
+</head>
+<body>
+    <script>
+        let kevinX;
+        let kevinY;
+        let potAngle = 0;
+        let targetPotAngle = 0;
+        let kevinSpeed = 1.5;
+        let gameState = 'intro';
+        let chiliParticles = [];
+        let startTime;
+        let splashAlpha = 0;
+        let kevinStandImg;
+        let kevinFallImg;
+        let officeBackground;
+        let leftButtonPressed = false;
+        let rightButtonPressed = false;
+
+        function preload() {
+            kevinStandImg = loadImage('https://raw.githubusercontent.com/kirknadbrown/kevin_stand/main/kevin_stand.png');
+            kevinFallImg = loadImage('https://raw.githubusercontent.com/kirknadbrown/kevin_fall/main/kevin_fall.png');
+            officeBackground = loadImage('https://raw.githubusercontent.com/kirknadbrown/office/main/office.webp');
+        }
+
+        function setup() {
+            createCanvas(windowWidth, windowHeight);
+            kevinY = height / 2;
+            startTime = millis();
+        }
+
+        function draw() {
+            if (gameState === 'intro') {
+                drawIntro();
+            } else if (gameState === 'playing') {
+                drawGame();
+            } else if (gameState === 'spilled') {
+                drawSpilled();
+            } else if (gameState === 'success') {
+                drawSuccess();
+            }
+        }
+
+        function drawIntro() {
+            background(245);
+            
+            fill(0);
+            textAlign(CENTER, CENTER);
+            textSize(48);
+            text("KEVIN'S FAMOUS CHILI", width / 2, height / 2 - 100);
+            
+            textSize(20);
+            text("Help Kevin bring his famous chili into the office", width / 2, height / 2 - 20);
+            text("Use arrow keys or tap the buttons to balance Kevin", width / 2, height / 2 + 20);
+            
+            textSize(16);
+            fill(100);
+            text('"The trick is to undercook the onions."', width / 2, height / 2 + 80);
+            
+            textSize(24);
+            fill(0);
+            text("Click or tap to start", width / 2, height / 2 + 140);
+        }
+
+        function drawGame() {
+            // Draw office background
+            if (officeBackground.width > 0) {
+                imageMode(CORNER);
+                image(officeBackground, 0, 0, width, height);
+            } else {
+                background(220, 220, 210);
+            }
+            
+            // Move Kevin
+            kevinX += kevinSpeed;
+            
+            // Check if keyboard keys are pressed
+            let leftKeyPressed = keyIsDown(LEFT_ARROW);
+            let rightKeyPressed = keyIsDown(RIGHT_ARROW);
+            
+            // Handle input for pot angle (keyboard + buttons)
+            if (leftKeyPressed || leftButtonPressed) {
+                targetPotAngle -= 2.0;
+            }
+            if (rightKeyPressed || rightButtonPressed) {
+                targetPotAngle += 2.0;
+            }
+            
+            // Lerp pot angle for smooth movement (even slower = harder)
+            potAngle = lerp(potAngle, targetPotAngle, 0.06);
+            
+            // Add EXTREME difficulty - pot wants to tip way more
+            targetPotAngle += random(-1.8, 1.8);
+            
+            // Add stronger momentum
+            if (potAngle > 0) {
+                targetPotAngle += 0.25;
+            } else if (potAngle < 0) {
+                targetPotAngle -= 0.25;
+            }
+            
+            // Clamp angles
+            targetPotAngle = constrain(targetPotAngle, -45, 45);
+            potAngle = constrain(potAngle, -45, 45);
+            
+            // Check if spilled (VERY strict)
+            if (abs(potAngle) > 25) {
+                gameState = 'spilled';
+                createChiliExplosion();
+                return;
+            }
+            
+            // Draw Kevin standing (tilting)
+            push();
+            translate(kevinX, kevinY);
+            rotate(radians(potAngle));
+            
+            imageMode(CENTER);
+            image(kevinStandImg, 0, 0, 150, 200);
+            
+            // Show danger indicator if tilting too much
+            if (abs(potAngle) > 15) {
+                noFill();
+                stroke(255, 0, 0, 150);
+                strokeWeight(5);
+                ellipse(0, 0, 180, 220);
+            }
+            
+            pop();
+            
+            // Draw mobile control buttons (pass keyboard state)
+            drawControlButtons(leftKeyPressed, rightKeyPressed);
+            
+            // Check if reached end
+            if (kevinX > width - 100) {
+                gameState = 'success';
+            }
+            
+            // Draw progress with background for visibility
+            noStroke();
+            fill(0, 0, 0, 150);
+            rect(10, 10, 200, 70);
+            
+            fill(255);
+            textSize(16);
+            textAlign(LEFT, TOP);
+            text('Balance: ' + floor(map(abs(potAngle), 0, 45, 100, 0)) + '%', 20, 20);
+            
+            // Progress bar
+            fill(100);
+            rect(20, 50, width - 40, 20);
+            fill(100, 180, 100);
+            rect(20, 50, map(kevinX, 100, width - 100, 0, width - 40), 20);
+        }
+
+        function drawControlButtons(leftKeyPressed, rightKeyPressed) {
+            let buttonSize = 80;
+            let buttonY = height - 120;
+            
+            // Check if either button OR key is pressed
+            let leftActive = leftButtonPressed || leftKeyPressed;
+            let rightActive = rightButtonPressed || rightKeyPressed;
+            
+            // Left button
+            let leftOpacity = leftActive ? 255 : 190;
+            fill(50, 50, 50, leftOpacity);
+            stroke(255, leftOpacity);
+            strokeWeight(3);
+            ellipse(60, buttonY, buttonSize, buttonSize);
+            
+            // Left arrow (pointing LEFT)
+            fill(255, leftOpacity);
+            noStroke();
+            triangle(40, buttonY, 65, buttonY - 20, 65, buttonY + 20);
+            
+            // Right button
+            let rightOpacity = rightActive ? 255 : 190;
+            fill(50, 50, 50, rightOpacity);
+            stroke(255, rightOpacity);
+            strokeWeight(3);
+            ellipse(width - 60, buttonY, buttonSize, buttonSize);
+            
+            // Right arrow (pointing RIGHT)
+            fill(255, rightOpacity);
+            noStroke();
+            triangle(width - 40, buttonY, width - 65, buttonY - 20, width - 65, buttonY + 20);
+        }
+
+        function createChiliExplosion() {
+            for (let i = 0; i < 150; i++) {
+                chiliParticles.push({
+                    x: kevinX,
+                    y: kevinY - 30,
+                    vx: random(-6, 6),
+                    vy: random(-10, -2),
+                    size: random(5, 20),
+                    color: color(random(120, 160), random(20, 50), random(20, 40))
+                });
+            }
+        }
+
+        function drawSpilled() {
+            // Draw office background
+            if (officeBackground.width > 0) {
+                imageMode(CORNER);
+                image(officeBackground, 0, 0, width, height);
+            } else {
+                background(220, 220, 210);
+            }
+            
+            // Update and draw chili particles
+            for (let i = chiliParticles.length - 1; i >= 0; i--) {
+                let p = chiliParticles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.3;
+                
+                fill(p.color);
+                noStroke();
+                ellipse(p.x, p.y, p.size);
+                
+                if (p.y > height) {
+                    chiliParticles.splice(i, 1);
+                }
+            }
+            
+            // Draw splatter on floor
+            if (chiliParticles.length < 50) {
+                fill(140, 40, 30, 200);
+                ellipse(kevinX, kevinY + 120, 300, 150);
+                ellipse(kevinX - 60, kevinY + 140, 120, 60);
+                ellipse(kevinX + 75, kevinY + 130, 150, 75);
+            }
+            
+            // Draw Kevin fallen on ground
+            push();
+            translate(kevinX, kevinY + 50);
+            
+            imageMode(CENTER);
+            image(kevinFallImg, 0, 0, 200, 150);
+            
+            pop();
+            
+            // Message with background
+            splashAlpha = min(255, splashAlpha + 3);
+            
+            fill(0, 0, 0, splashAlpha * 0.7);
+            rect(width / 2 - 400, height / 2 - 150, 800, 250);
+            
+            fill(255, splashAlpha);
+            textAlign(CENTER, CENTER);
+            textSize(48);
+            text("OH NO!", width / 2, height / 2 - 100);
+            
+            textSize(22);
+            text('"The trick is to undercook the onions."', width / 2, height / 2 - 50);
+            text('"Everybody is going to get to know each other in the pot."', width / 2, height / 2 - 20);
+            
+            if (splashAlpha > 200) {
+                textSize(20);
+                fill(255, splashAlpha - 100);
+                text("Click to try again", width / 2, height / 2 + 60);
+            }
+        }
+
+        function drawSuccess() {
+            // Draw office background
+            if (officeBackground.width > 0) {
+                imageMode(CORNER);
+                image(officeBackground, 0, 0, width, height);
+            } else {
+                background(220, 220, 210);
+            }
+            
+            // Draw successful Kevin standing upright
+            push();
+            translate(width - 200, kevinY);
+            
+            imageMode(CENTER);
+            image(kevinStandImg, 0, 0, 150, 200);
+            
+            pop();
+            
+            // Success message with background
+            fill(0, 0, 0, 200);
+            rect(width / 2 - 400, height / 2 - 150, 800, 250);
+            
+            fill(255);
+            textAlign(CENTER, CENTER);
+            textSize(56);
+            text("SUCCESS!", width / 2, height / 2 - 100);
+            
+            textSize(28);
+            text("The chili has arrived safely", width / 2, height / 2 - 40);
+            
+            textSize(20);
+            fill(200);
+            text('"It is probably the thing I do best."', width / 2, height / 2 + 20);
+            
+            textSize(18);
+            fill(255);
+            text("Click to play again", width / 2, height / 2 + 80);
+        }
+
+        function mousePressed() {
+            if (gameState === 'intro') {
+                gameState = 'playing';
+                kevinX = 100;
+                potAngle = 0;
+                targetPotAngle = 0;
+            } else if (gameState === 'playing') {
+                // Check if clicking on buttons
+                let buttonSize = 80;
+                let buttonY = height - 120;
+                
+                // Left button
+                if (dist(mouseX, mouseY, 60, buttonY) < buttonSize / 2) {
+                    leftButtonPressed = true;
+                }
+                
+                // Right button
+                if (dist(mouseX, mouseY, width - 60, buttonY) < buttonSize / 2) {
+                    rightButtonPressed = true;
+                }
+            } else if (gameState === 'spilled' && splashAlpha > 200) {
+                gameState = 'intro';
+                kevinX = 100;
+                potAngle = 0;
+                targetPotAngle = 0;
+                chiliParticles = [];
+                splashAlpha = 0;
+            } else if (gameState === 'success') {
+                gameState = 'intro';
+                kevinX = 100;
+                potAngle = 0;
+                targetPotAngle = 0;
+            }
+        }
+
+        function mouseReleased() {
+            leftButtonPressed = false;
+            rightButtonPressed = false;
+        }
+
+        function touchStarted() {
+            if (gameState === 'playing') {
+                let buttonSize = 80;
+                let buttonY = height - 120;
+                
+                // Check all touches
+                for (let i = 0; i < touches.length; i++) {
+                    let touch = touches[i];
+                    
+                    // Left button
+                    if (dist(touch.x, touch.y, 60, buttonY) < buttonSize / 2) {
+                        leftButtonPressed = true;
+                    }
+                    
+                    // Right button
+                    if (dist(touch.x, touch.y, width - 60, buttonY) < buttonSize / 2) {
+                        rightButtonPressed = true;
+                    }
+                }
+            } else {
+                mousePressed();
+            }
+            return false;
+        }
+
+        function touchEnded() {
+            leftButtonPressed = false;
+            rightButtonPressed = false;
+            return false;
+        }
+
+        function windowResized() {
+            resizeCanvas(windowWidth, windowHeight);
+            kevinY = height / 2;
+        }
+    </script>
+</body>
+</html>
